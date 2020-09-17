@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from typing import Dict, Any
+
 import requests
 from openpyxl import load_workbook
 import sdek
@@ -22,13 +24,11 @@ senders_kladr = [sheet.cell(row=i, column=5).value for i in range(2, 38132)]
 receivers_fias = [sheet.cell(row=i, column=4).value for i in range(2, 38132)]
 senders_fias = [sheet.cell(row=i, column=8).value for i in range(2, 38132)]
 
+cities: Dict[str, str] = {}
 
-def get_name(kladr):
-    with Dbf.open('KLADR.DBF') as dbf:
-        for row in dbf:
-            if row.code == kladr:
-                name = row.name
-    return name
+with Dbf.open('KLADR.DBF') as dbf:
+    for row in dbf:
+        cities.setdefault(row[2], row[0])
 
 
 with open('sdek.csv', mode='w', encoding='utf-8') as sdek_csv:
@@ -36,33 +36,36 @@ with open('sdek.csv', mode='w', encoding='utf-8') as sdek_csv:
     file_writer.writerow(
         ["Ключ (ОткудаФИАС+КудаФИАС)", "метод доставки", "Цена", "Минимальный срок", "Максимальный срок"])
     for i in tqdm(range(len(senders_kladr))):
-        sender_name = get_name(senders_kladr[i])
-        receiver_name = get_name(receivers_kladr[i])
+        sender_name = cities[senders_kladr[i]]
+        receiver_name = cities[receivers_kladr[i]]
         sender_fias = senders_fias[i]
         receiver_fias = receivers_fias[i]
-        response = sdek.get_sdek(sender_name, receiver_name)
-        for tariff in response['result']:
-            if tariff['status']:
-                file_writer.writerow([
-                    f'{sender_fias}  {receiver_fias}',
-                    f'{tariffs[tariff["tariffId"]]}',
-                    f'{tariff["result"]["price"]}',
-                    f'{tariff["result"]["deliveryPeriodMin"]}',
-                    f'{tariff["result"]["deliveryPeriodMax"]}'
-                ])
-            else:
-                file_writer.writerow([
-                    f'{sender_fias}  {receiver_fias}',
-                    f'{tariffs[tariff["tariffId"]]}',
-                    "Невозможно осуществить доставку по этому направлению при заданных условиях"
-                ])
+        try:
+            response = sdek.get_sdek(sender_name, receiver_name)
+            for tariff in response['result']:
+                if tariff['status']:
+                    file_writer.writerow([
+                        f'{sender_fias}  {receiver_fias}',
+                        f'{tariffs[tariff["tariffId"]]}',
+                        f'{tariff["result"]["price"]}',
+                        f'{tariff["result"]["deliveryPeriodMin"]}',
+                        f'{tariff["result"]["deliveryPeriodMax"]}'
+                    ])
+                else:
+                    file_writer.writerow([
+                        f'{sender_fias}  {receiver_fias}',
+                        f'{tariffs[tariff["tariffId"]]}',
+                        "Невозможно осуществить доставку по этому направлению при заданных условиях"
+                    ])
+        except:
+            file_writer.writerow(["Внутренняя ошибка сервера"])
 
 with open("Boxberry.csv", mode='w', encoding='utf-8') as bb_csv:
     file_writer = csv.writer(bb_csv, delimiter=",", lineterminator="\r")
     file_writer.writerow(["Ключ (ОткудаФИАС+КудаФИАС)", "метод доставки", "Цена", "срок"])
     for i in tqdm(range(len(senders_kladr))):
-        sender_name = get_name(senders_kladr[i])
-        receiver_name = get_name(receivers_kladr[i])
+        sender_name = cities[senders_kladr[i]]
+        receiver_name = cities[receivers_kladr[i]]
         sender_fias = senders_fias[i]
         receiver_fias = receivers_fias[i]
         sender_city_id = boxberry.get_city_id(senders_kladr[i])
